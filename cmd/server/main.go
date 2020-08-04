@@ -24,10 +24,15 @@ type session struct {
 
 	ttyCon     net.Conn
 	resizeConn net.Conn
+
+	server *server
 }
 
 type server struct {
 	session *session
+
+	ctx    context.Context
+	cancel context.CancelFunc
 
 	sigs chan os.Signal
 }
@@ -43,35 +48,18 @@ func writeUint16PrefixedData(w io.Writer, data []byte) error {
 }
 
 func (s *session) sendNewWindowSize(size *pty.Winsize) error {
-	//fmt.Printf("new size %v\n", size)
-
 	b, err := json.Marshal(size)
 	if err != nil {
 		return err
 	}
-
 	return writeUint16PrefixedData(s.resizeConn, b)
 }
-
-//func (s *session) handle2(size *pty.Winsize) error {
-//	//go func() {
-//	//	_, _ = io.Copy(os.Stdout, s.ttyCon)
-//	//	s.cancel()
-//	//}()
-//	//go func() {
-//	//	_, _ = io.Copy(s.ttyCon, os.Stdin)
-//	//	s.cancel()
-//	//}()
-//
-//	//<-s.ctx.Done()
-//	return nil
-//}
 
 func (s *session) handle() error {
 	for {
 		stream, err := s.yaSession.Accept()
 		if err != nil {
-			panic(err)
+			return err
 		}
 
 		buf := make([]byte, 1)
@@ -83,10 +71,10 @@ func (s *session) handle() error {
 
 		case 0x02:
 			s.resizeConn = stream
+			s.server.sigs <- syscall.SIGWINCH
 		default:
-			panic("unsupported stream code")
+			return fmt.Errorf("unsupported stream code %v", buf[0])
 		}
-
 	}
 }
 
@@ -104,24 +92,6 @@ func (s *session) handle1(conn net.Conn) error {
 	return nil
 }
 
-//func (s *session) handle2(conn net.Conn) error {
-//	for {
-//		_ = <-s.sigs
-//		if len(s.sigs) > 0 {
-//			continue
-//		}
-//		size, err := pty.GetsizeFull(os.Stdin)
-//		if err != nil {
-//			fmt.Printf("failed to get size: %v\n", err)
-//		} else {
-//			fmt.Printf("size is %v\n", size)
-//		}
-//		if s.resizeConn != nil {
-//			s.resizeConn.Write([]byte("hello"))
-//		}
-//	}
-//}
-
 func (s *server) handleRequest(conn net.Conn) error {
 	defer conn.Close()
 
@@ -135,7 +105,9 @@ func (s *server) handleRequest(conn net.Conn) error {
 		yaSession: yaSession,
 		ctx:       ctx,
 		cancel:    cancel,
+		server:    s,
 	}
+	defer cancel()
 	defer func() { s.session = nil }()
 
 	oldState, err := terminal.MakeRaw(int(os.Stdin.Fd()))
@@ -144,14 +116,17 @@ func (s *server) handleRequest(conn net.Conn) error {
 	}
 	defer func() { _ = terminal.Restore(int(os.Stdin.Fd()), oldState) }()
 
-	s.session.handle()
-
-	return nil
+	return s.session.handle()
 }
 
 func (s *server) windowResizeHandler() error {
 	for {
-		_ = <-s.sigs
+		select {
+		case _ = <-s.sigs:
+
+		case <-s.ctx.Done():
+			return nil
+		}
 		if len(s.sigs) > 0 {
 			continue
 		}
@@ -177,18 +152,16 @@ func (s *server) Start() error {
 	go s.windowResizeHandler()
 
 	for {
-		// Listen for an incoming connection.
 		conn, err := l.Accept()
 		if err != nil {
-			fmt.Printf("Error accepting: %v", err.Error())
-			os.Exit(1)
+			fmt.Fprintf(os.Stderr, "Error accepting: %v", err.Error())
+			continue
 		}
-		// Handle connections in a new goroutine.
 		err = s.handleRequest(conn)
-		if err != nil {
-			fmt.Printf("lost connection to interactive debugger: %v\n", err)
+		if err != nil && err != io.EOF {
+			fmt.Fprintf(os.Stderr, "lost connection to interactive debugger: %v\n", err)
 		} else {
-			fmt.Printf("interactive debugger closed\n")
+			fmt.Fprintf(os.Stderr, "interactive debugger closed\n")
 		}
 	}
 
@@ -199,9 +172,13 @@ func main() {
 	sigs := make(chan os.Signal, 1)
 	signal.Notify(sigs, syscall.SIGWINCH)
 
+	ctx, cancel := context.WithCancel(context.Background())
 	srv := &server{
-		sigs: sigs,
+		sigs:   sigs,
+		ctx:    ctx,
+		cancel: cancel,
 	}
+	defer cancel()
 
 	err := srv.Start()
 	if err != nil {

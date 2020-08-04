@@ -105,9 +105,10 @@ func interactiveMode(remoteConsoleAddr string) error {
 
 	go func() {
 		for {
-			fmt.Printf("readingv\n")
 			data, err := ReadUint16PrefixedData(stream2)
-			if err != nil {
+			if err == io.EOF {
+				return
+			} else if err != nil {
 				panic(err)
 			}
 
@@ -117,7 +118,7 @@ func interactiveMode(remoteConsoleAddr string) error {
 				panic(err)
 			}
 
-			fmt.Printf("setsize: %v\n", size)
+			//fmt.Printf("setsize: %v\n", size)
 			err = pty.Setsize(ptmx, &size)
 			if err != nil {
 				panic(err)
