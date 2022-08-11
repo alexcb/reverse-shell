@@ -76,44 +76,58 @@ reverseshell:
     SAVE ARTIFACT build/reverseshell-client AS LOCAL "build/$GOOS/$GOARCH/reverseshell-client"
     SAVE ARTIFACT build/reverseshell-server AS LOCAL "build/$GOOS/$GOARCH/reverseshell-server"
 
-reverseshell-darwin:
-    COPY \
+for-darwin-arm64:
+    BUILD \
+        --build-arg GOOS=darwin \
+        --build-arg GOARCH=arm64 \
+        --build-arg GO_EXTRA_LDFLAGS= \
+        +reverseshell
+
+for-darwin-amd64:
+    BUILD \
         --build-arg GOOS=darwin \
         --build-arg GOARCH=amd64 \
         --build-arg GO_EXTRA_LDFLAGS= \
-        +reverseshell/* ./
-    SAVE ARTIFACT ./*
+        +reverseshell
 
-reverseshell-linux:
+for-linux-amd64:
     BUILD \
         --build-arg GOOS=linux \
         --build-arg GOARCH=amd64 \
         --build-arg GO_EXTRA_LDFLAGS="-linkmode external -extldflags -static" \
         +reverseshell
 
-reverseshell-all:
-    COPY +reverseshell-linux/reverseshell ./reverseshell-linux-amd64
-    COPY +reverseshell-darwin/reverseshell ./reverseshell-darwin-amd64
-    SAVE ARTIFACT ./*
+for-linux-arm64:
+    BUILD \
+        --build-arg GOOS=linux \
+        --build-arg GOARCH=arm64 \
+        --build-arg GO_EXTRA_LDFLAGS="-linkmode external -extldflags -static" \
+        +reverseshell
 
-release:
-    BUILD +test
-    FROM node:13.10.1-alpine3.11
-    RUN npm install -g github-release-cli@v1.3.1
-    WORKDIR /release
-    COPY +reverseshell-linux/reverseshell ./reverseshell-linux-amd64
-    COPY +reverseshell-darwin/reverseshell ./reverseshell-darwin-amd64
-    ARG RELEASE_TAG
-    ARG EARTHLY_GIT_HASH
-    ARG BODY="No details provided"
-    RUN --secret GITHUB_TOKEN=+secrets/GITHUB_TOKEN test -n "$GITHUB_TOKEN"
-    RUN --push \
-        --secret GITHUB_TOKEN=+secrets/GITHUB_TOKEN \
-        github-release upload \
-        --owner alexcb \
-        --repo secret-share \
-        --commitish "$EARTHLY_GIT_HASH" \
-        --tag "$RELEASE_TAG" \
-        --name "$RELEASE_TAG" \
-        --body "$BODY" \
-        ./reverseshell-*
+reverseshell-all:
+    BUILD +reverseshell-darwin
+    BUILD +reverseshell-linux
+
+#release:
+#    #BUILD +test
+#    FROM node:13.10.1-alpine3.11
+#    RUN npm install -g github-release-cli@v1.3.1
+#    WORKDIR /release
+#    COPY +reverseshell-linux/build/reverseshell-client ./reverseshell-client-linux-amd64
+#    COPY +reverseshell-linux/build/reverseshell-server ./reverseshell-server-linux-amd64
+#    COPY +reverseshell-darwin/build/reverseshell-client ./reverseshell-client-darwin-amd64
+#    COPY +reverseshell-darwin/build/reverseshell-server ./reverseshell-server-darwin-amd64
+#    ARG RELEASE_TAG
+#    ARG EARTHLY_GIT_HASH
+#    ARG BODY="No details provided"
+#    RUN --secret GITHUB_TOKEN test -n "$GITHUB_TOKEN"
+#    RUN --push \
+#        --secret GITHUB_TOKEN \
+#        github-release upload \
+#        --owner alexcb \
+#        --repo reverseshell \
+#        --commitish "$EARTHLY_GIT_HASH" \
+#        --tag "$RELEASE_TAG" \
+#        --name "$RELEASE_TAG" \
+#        --body "$BODY" \
+#        ./reverseshell-*
