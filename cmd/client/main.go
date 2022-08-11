@@ -10,9 +10,12 @@ import (
 	"net"
 	"os"
 	"os/exec"
+	"path"
 
+	"github.com/alexcb/reverseshell/v2/encconn"
 	"github.com/creack/pty"
 	"github.com/hashicorp/yamux"
+	"github.com/jessevdk/go-flags"
 )
 
 var (
@@ -44,7 +47,7 @@ func ReadUint16PrefixedData(r io.Reader) ([]byte, error) {
 	return ioutil.ReadAll(io.LimitReader(r, int64(l)))
 }
 
-func interactiveMode(remoteConsoleAddr string) error {
+func interactiveMode(remoteConsoleAddr, password string) error {
 	conn, err := net.Dial("tcp", remoteConsoleAddr)
 	if err != nil {
 		return err
@@ -55,6 +58,11 @@ func interactiveMode(remoteConsoleAddr string) error {
 			fmt.Printf("error closing: %v\n", err)
 		}
 	}()
+
+	conn, err = encconn.New(conn, password)
+	if err != nil {
+		return err
+	}
 
 	session, err := yamux.Client(conn, nil)
 	if err != nil {
@@ -133,10 +141,40 @@ func interactiveMode(remoteConsoleAddr string) error {
 	return nil
 }
 
+type opts struct {
+	Verbose  bool   `long:"verbose" short:"v" description:"Enable verbose logging"`
+	Version  bool   `long:"version" short:"V" description:"Print version and exit"`
+	Password string `long:"password" short:"p" description:"Symetric password"`
+}
+
 func main() {
-	remoteConsoleAddr := "127.0.0.1:5432"
-	err := interactiveMode(remoteConsoleAddr)
+
+	programName := "reverseshell-client"
+	if len(os.Args) > 0 {
+		programName = path.Base(os.Args[0])
+	}
+
+	progOpts := opts{}
+	p := flags.NewNamedParser("", flags.PrintErrors|flags.PassDoubleDash|flags.PassAfterNonOption)
+	_, err := p.AddGroup(fmt.Sprintf("%s [options] args", programName), "", &progOpts)
 	if err != nil {
-		panic(err)
+		fmt.Fprintf(os.Stderr, "%s\n", err.Error())
+		os.Exit(1)
+	}
+	args, err := p.ParseArgs(os.Args[1:])
+	if err != nil {
+		p.WriteHelp(os.Stderr)
+		os.Exit(1)
+	}
+	if len(args) != 1 {
+		p.WriteHelp(os.Stderr)
+		os.Exit(1)
+	}
+	host := args[0]
+
+	err = interactiveMode(host, progOpts.Password)
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "%s\n", err.Error())
+		os.Exit(1)
 	}
 }
