@@ -97,10 +97,10 @@ func (s *session) handle1(conn net.Conn) error {
 	return nil
 }
 
-func (s *server) handleRequest(conn net.Conn) error {
-	defer conn.Close()
+func (s *server) handleRequest(stream io.ReadWriteCloser) error {
+	defer stream.Close()
 
-	yaSession, err := yamux.Server(conn, nil)
+	yaSession, err := yamux.Server(stream, nil)
 	if err != nil {
 		return err
 	}
@@ -164,13 +164,21 @@ func (s *server) Start() error {
 		}
 		fmt.Fprintf(os.Stderr, "got shell from %v\n", conn)
 
-		conn, err = encconn.New(conn, s.password)
-		if err != nil {
-			return err
+		var stream io.ReadWriteCloser
+		if v, _ := os.LookupEnv("STUB"); v == "1" {
+			stream, err = encconn.Stub(conn, s.password)
+			if err != nil {
+				return err
+			}
+		} else {
+			stream, err = encconn.New(conn, s.password)
+			if err != nil {
+				return err
+			}
 		}
-		fmt.Fprintf(os.Stderr, "valid encryption handshake\n")
+		//fmt.Fprintf(os.Stderr, "valid encryption handshake\n")
 
-		err = s.handleRequest(conn)
+		err = s.handleRequest(stream)
 		if err != nil && err != io.EOF {
 			fmt.Fprintf(os.Stderr, "lost connection to shell: %v\n", err)
 		} else {
@@ -227,7 +235,7 @@ func main() {
 
 	err = srv.Start()
 	if err != nil {
-		fmt.Fprintf(os.Stderr, "%s", err.Error())
+		fmt.Fprintf(os.Stderr, "%s\n", err.Error())
 		os.Exit(1)
 	}
 }

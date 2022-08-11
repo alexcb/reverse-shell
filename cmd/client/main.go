@@ -59,18 +59,28 @@ func interactiveMode(remoteConsoleAddr, password string) error {
 		}
 	}()
 
-	conn, err = encconn.New(conn, password)
-	if err != nil {
-		return err
+	var stream io.ReadWriteCloser
+
+	if v, _ := os.LookupEnv("STUB"); v == "1" {
+		stream, err = encconn.Stub(conn, password)
+		if err != nil {
+			return err
+		}
+	} else {
+		stream, err = encconn.New(conn, password)
+		if err != nil {
+			return err
+		}
 	}
 
-	session, err := yamux.Client(conn, nil)
+	session, err := yamux.Client(stream, nil)
 	if err != nil {
 		panic(err)
 	}
 
 	stream1, err := session.Open()
 	if err != nil {
+		fmt.Printf("wat?\n")
 		panic(err)
 	}
 	stream1.Write([]byte{0x01})
