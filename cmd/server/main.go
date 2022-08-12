@@ -192,12 +192,11 @@ func (s *server) Start() error {
 type opts struct {
 	Verbose  bool   `long:"verbose" short:"v" description:"Enable verbose logging"`
 	Version  bool   `long:"version" short:"V" description:"Print version and exit"`
-	Password string `long:"password" short:"p" description:"Symetric password"`
+	Password string `long:"password" short:"p" description:"Symetric password" required:"true"`
 	Bind     string `long:"bind" short:"b" default:"0.0.0.0:5143" description:"address to bind to"`
 }
 
 func main() {
-
 	programName := "reverseshell-server"
 	if len(os.Args) > 0 {
 		programName = path.Base(os.Args[0])
