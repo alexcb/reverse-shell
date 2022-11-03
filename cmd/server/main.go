@@ -2,10 +2,12 @@ package main
 
 import (
 	"context"
+	"crypto/rand"
 	"encoding/binary"
 	"encoding/json"
 	"fmt"
 	"io"
+	"math/big"
 	"net"
 	"os"
 	"os/signal"
@@ -157,6 +159,7 @@ func (s *server) Start() error {
 	go s.windowResizeHandler()
 
 	for {
+		fmt.Fprintf(os.Stderr, "Accepting connections on %s\n", s.bindAddr)
 		conn, err := l.Accept()
 		if err != nil {
 			fmt.Fprintf(os.Stderr, "Error accepting: %v", err.Error())
@@ -192,7 +195,7 @@ func (s *server) Start() error {
 type opts struct {
 	Verbose  bool   `long:"verbose" short:"v" description:"Enable verbose logging"`
 	Version  bool   `long:"version" short:"V" description:"Print version and exit"`
-	Password string `long:"password" short:"p" description:"Symetric password" required:"true"`
+	Password string `long:"password" short:"p" description:"Symetric password"`
 	Bind     string `long:"bind" short:"b" default:"0.0.0.0:5143" description:"address to bind to"`
 }
 
@@ -222,9 +225,19 @@ func main() {
 	sigs := make(chan os.Signal, 1)
 	signal.Notify(sigs, syscall.SIGWINCH)
 
+	password := progOpts.Password
+	if password == "" {
+		password, err = generateRandomString(6)
+		if err != nil {
+			fmt.Fprintf(os.Stderr, "%s\n", err.Error())
+			os.Exit(1)
+		}
+		fmt.Fprintf(os.Stderr, "No password given; using random password=%s\n", password)
+	}
+
 	ctx, cancel := context.WithCancel(context.Background())
 	srv := &server{
-		password: progOpts.Password,
+		password: password,
 		bindAddr: progOpts.Bind,
 		sigs:     sigs,
 		ctx:      ctx,
@@ -237,4 +250,18 @@ func main() {
 		fmt.Fprintf(os.Stderr, "%s\n", err.Error())
 		os.Exit(1)
 	}
+}
+
+func generateRandomString(n int) (string, error) {
+	const letters = "0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz"
+	ret := make([]byte, n)
+	for i := 0; i < n; i++ {
+		num, err := rand.Int(rand.Reader, big.NewInt(int64(len(letters))))
+		if err != nil {
+			return "", err
+		}
+		ret[i] = letters[num.Int64()]
+	}
+
+	return string(ret), nil
 }
