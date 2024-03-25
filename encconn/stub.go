@@ -13,6 +13,7 @@ type stub struct {
 	f *os.File
 }
 
+// Stub stubs something out
 func Stub(conn net.Conn, password string) (io.ReadWriteCloser, error) {
 	ec := &stub{
 		conn: conn,

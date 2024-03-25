@@ -1,6 +1,6 @@
-VERSION 0.6
+VERSION 0.8
 
-FROM golang:1.18-alpine3.16
+FROM golang:1.22-alpine3.19
 
 RUN apk add --update --no-cache \
     bash \

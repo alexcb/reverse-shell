@@ -38,7 +38,7 @@ func getShellPath() (string, bool) {
 	return "", false
 }
 
-func ReadUint16PrefixedData(r io.Reader) ([]byte, error) {
+func readUint16PrefixedData(r io.Reader) ([]byte, error) {
 	var l uint16
 	err := binary.Read(r, binary.LittleEndian, &l)
 	if err != nil {
@@ -59,6 +59,8 @@ func interactiveMode(remoteConsoleAddr, password string) error {
 			fmt.Printf("error closing: %v\n", err)
 		}
 	}()
+
+	fmt.Fprintf(os.Stderr, "connection established\n")
 
 	var stream io.ReadWriteCloser
 
@@ -124,7 +126,7 @@ func interactiveMode(remoteConsoleAddr, password string) error {
 
 	go func() {
 		for {
-			data, err := ReadUint16PrefixedData(stream2)
+			data, err := readUint16PrefixedData(stream2)
 			if err == io.EOF {
 				return
 			} else if err != nil {
@@ -148,7 +150,7 @@ func interactiveMode(remoteConsoleAddr, password string) error {
 
 	<-ctx.Done()
 
-	fmt.Fprintf(os.Stderr, "exiting interactive debugger shell\n")
+	fmt.Fprintf(os.Stderr, "reverse shell closed\n")
 	return nil
 }
 
